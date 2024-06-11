@@ -6,51 +6,59 @@ import (
 	"fmt"
 	"github.com/fstanis/screenresolution"
 	"log"
-	"net"
 	"os"
 	"os/exec"
 	"strings"
 	"time"
 )
 
-const SunshineRtspPort = 48010
-
-const mainDisplay = "PHL 346B1C"
-const fakeDisplay = "Linux FHD"
-
-// C:\Users\mail\bin\multimonitortool-x64\MultiMonitorTool.exe /disable PHL093E
-// C:\Users\mail\bin\multimonitortool-x64\MultiMonitorTool.exe /enable LNX0000
-const mainDisplayId = "PHL093E"
 const fakeDisplayId = "LNX0000"
 
 func main() {
 	mainDisplayIsActive := false
 	fakeDisplayIsActive := false
 	sunshineIsStreaming := false
+
+	mainDisplayIds := getMainDisplayIds()
+
 	for {
-		mainDisplayIsActive = isMainDisplayActive()
+		mainDisplayIsActive = isMainDisplayActive(mainDisplayIds)
 		fakeDisplayIsActive = isFakeDisplayActive()
 		sunshineIsStreaming = isSunshineStreaming()
 
-		log.Println("Fake display is active: ", fakeDisplayIsActive)
-		log.Println("Main display is active: ", mainDisplayIsActive)
-		log.Println("Sunshine is streaming over RTSP: ", sunshineIsStreaming)
+		log.Printf("Fake display %s is active: %v\n", fakeDisplayId, fakeDisplayIsActive)
+		log.Printf("Main displays %s are active: %v\n", strings.Join(mainDisplayIds, ","), mainDisplayIsActive)
+		log.Println("Sunshine is streaming according to log: ", sunshineIsStreaming)
 
 		if sunshineIsStreaming && (!fakeDisplayIsActive || mainDisplayIsActive) {
 			log.Println("Sunshine is streaming and main display is active. Deactivate Main Display, activate fake display.")
-			disableDisplay(mainDisplayId)
-			enableDisplay(fakeDisplayId)
+			disableDisplay(mainDisplayIds)
+			enableDisplay([]string{fakeDisplayId})
 
 		}
 
 		if !sunshineIsStreaming && (fakeDisplayIsActive || !mainDisplayIsActive) {
 			log.Println("Sunshine is not streaming and fake display is active. Activate Main Display, deactivate Fake display")
-			disableDisplay(fakeDisplayId)
-			enableDisplay(mainDisplayId)
+			disableDisplay([]string{fakeDisplayId})
+			enableDisplay(mainDisplayIds)
 		}
 
 		time.Sleep(10 * time.Second)
 	}
+}
+
+func getMainDisplayIds() []string {
+	mainDisplayIds := []string{}
+	response := getMultiMonitorDeviceResponse()
+	for i, line := range response {
+		if i != 0 {
+			displayId := line[15]
+			if displayId != fakeDisplayId {
+				mainDisplayIds = append(mainDisplayIds, displayId)
+			}
+		}
+	}
+	return mainDisplayIds
 }
 
 func readLogFile(path string) (string, error) {
@@ -116,56 +124,71 @@ func isUltraWidescreen() bool {
 }
 
 func isFakeDisplayActive() bool {
-	displayName := fakeDisplay
+	displayName := fakeDisplayId
 	return isDisplayActive(displayName)
 }
 
-func isMainDisplayActive() bool {
-	displayName := mainDisplay
-	return isDisplayActive(displayName)
+func isMainDisplayActive(mainDisplayIds []string) bool {
+	returnValue := false
+	for _, id := range mainDisplayIds {
+		if !isDisplayActive(id) {
+			// immediately return false if one display is not active
+			return false
+		}
+		returnValue = true
+
+	}
+	return returnValue
 }
 
-func disableDisplay(monitor string) {
+func disableDisplay(monitor []string) {
 	err := changeDisplay("/disable", monitor)
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
-func enableDisplay(monitor string) {
+func enableDisplay(monitor []string) {
 	err := changeDisplay("/enable", monitor)
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
-func changeDisplay(command string, monitor string) error {
+func changeDisplay(command string, displays []string) error {
 
-	// Create the command with arguments
-	cmd := exec.Command("C:\\Users\\mail\\bin\\multimonitortool-x64\\MultiMonitorTool.exe", command, monitor)
+	for _, display := range displays {
+		// Create the command with arguments
+		cmd := exec.Command("C:\\Users\\mail\\bin\\multimonitortool-x64\\MultiMonitorTool.exe", command, display)
 
-	// Run the command
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to execute command: %v", err)
+		// Run the command
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to execute command: %v", err)
+		}
 	}
 	return nil
 }
 
 func isDisplayActive(displayName string) bool {
-	response, err := runCommandAndParseCSV("C:\\Users\\mail\\bin\\multimonitortool-x64\\MultiMonitorTool.exe", "/scomma", "dumpsys_display.csv")
-	if err != nil {
-		log.Fatal(err)
-	}
+	response := getMultiMonitorDeviceResponse()
 	for i, record := range response {
 		if i > 0 {
 			// value 3 is active state
 			// value 12 is name
-			if record[3] == "Yes" && record[18] == displayName {
+			if record[3] == "Yes" && record[15] == displayName {
 				return true
 			}
 		}
 	}
 	return false
+}
+
+func getMultiMonitorDeviceResponse() [][]string {
+	response, err := runCommandAndParseCSV("C:\\Users\\mail\\bin\\multimonitortool-x64\\MultiMonitorTool.exe", "/scomma", "dumpsys_display.csv")
+	if err != nil {
+		log.Fatal(err)
+	}
+	return response
 }
 
 func runCommandAndParseCSV(executable, args, filename string) ([][]string, error) {
@@ -193,28 +216,5 @@ func runCommandAndParseCSV(executable, args, filename string) ([][]string, error
 		return nil, fmt.Errorf("failed to read CSV file: %v", err)
 	}
 
-	// Print the records (or process them as needed)
-	//for _, record := range records {
-	//	fmt.Println(record)
-	//}
 	return records, nil
-}
-
-func localPortIsAvailable(port int) bool {
-
-	ln, err := net.Listen("tcp", fmt.Sprintf(":%d", port))
-
-	if err != nil {
-		//fmt.Fprintf(os.Stderr, "Can't listen on port %q: %s", port, err)
-		return false
-	}
-
-	err = ln.Close()
-	if err != nil {
-		//fmt.Fprintf(os.Stderr, "Couldn't stop listening on port %q: %s", port, err)
-		return false
-	}
-
-	//fmt.Printf("TCP Port %d is available", port)
-	return true
 }
