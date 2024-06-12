@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path"
 	"strings"
 	"time"
 )
@@ -159,7 +160,7 @@ func changeDisplay(command string, displays []string) error {
 
 	for _, display := range displays {
 		// Create the command with arguments
-		cmd := exec.Command("C:\\Users\\mail\\bin\\multimonitortool-x64\\MultiMonitorTool.exe", command, display)
+		cmd := exec.Command("MultiMonitorTool.exe", command, display)
 
 		// Run the command
 		if err := cmd.Run(); err != nil {
@@ -184,7 +185,11 @@ func isDisplayActive(displayName string) bool {
 }
 
 func getMultiMonitorDeviceResponse() [][]string {
-	response, err := runCommandAndParseCSV("C:\\Users\\mail\\bin\\multimonitortool-x64\\MultiMonitorTool.exe", "/scomma", "dumpsys_display.csv")
+	tempFolder, err := os.CreateTemp("", "monitor_watch")
+	if err != nil {
+		log.Fatal(err)
+	}
+	response, err := runCommandAndParseCSV("MultiMonitorTool.exe", "/scomma", path.Join(tempFolder.Name(), "dumpsys_display.csv"))
 	if err != nil {
 		log.Fatal(err)
 	}
