@@ -2,6 +2,8 @@
 
 This is a tool to automatically activate and deactivate main and fake displays when using [Moonlight](https://moonlight-stream.org/) and [Sunshine](https://app.lizardbyte.dev/Sunshine) for desktop streaming. This will work in conjunction with the [IddSampleDriver](https://github.com/ge9/IddSampleDriver) which will create a fake display for you that can render different screen resolutions than your main display. This program uses [MultiMonitorTool](https://www.nirsoft.net/utils/multi_monitor_tool.html) for determining the active displays and switching their state.
 
+See [Releases](https://github.com/snipem/moonlight_display_auto_switch/releases) for download links.
+
 ## Prerequisites
 
 Make sure to have `MultiMonitorTool.exe` in your `PATH` environment variable. Also the sunshine log file has to be stored at `%ProgramFiles%\Sunshine\config\sunshine.log`.
