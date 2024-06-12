@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"encoding/csv"
 	"fmt"
-	"github.com/fstanis/screenresolution"
 	"log"
 	"os"
 	"os/exec"
@@ -107,21 +106,6 @@ func isSunshineStreaming() bool {
 	}
 
 	return isConnected
-}
-
-func isUltraWidescreen() bool {
-	resolution := screenresolution.GetPrimary()
-	if resolution == nil {
-		log.Fatal("can't get resolution")
-	}
-
-	//fmt.Printf("%.2f", resolution.Height/resolution.Width)
-	if resolution.Width == 2752 && resolution.Height == 1152 {
-		return true
-	}
-
-	return false
-
 }
 
 func isFakeDisplayActive() bool {
