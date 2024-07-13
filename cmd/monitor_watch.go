@@ -5,9 +5,10 @@ import (
 	"encoding/csv"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"os/exec"
-	"path"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -169,14 +170,21 @@ func isDisplayActive(displayName string) bool {
 }
 
 func getMultiMonitorDeviceResponse() [][]string {
-	tempFolder, err := os.CreateTemp("", "monitor_watch")
+	// Generate a random file name for outputting the multimonitor device response
+	tempFolder := os.TempDir()
+	tempFile := filepath.Join(tempFolder, fmt.Sprintf("multimonitortool_%d.csv", rand.Int()))
+
+	response, err := runCommandAndParseCSV("MultiMonitorTool.exe", "/scomma", tempFile)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error running multimonitortool: %s", err)
 	}
-	response, err := runCommandAndParseCSV("MultiMonitorTool.exe", "/scomma", path.Join(tempFolder.Name(), "dumpsys_display.csv"))
+
+	// Remove the temporary file
+	err = os.Remove(tempFile)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error removing temporary file: %s", err)
 	}
+
 	return response
 }
 
