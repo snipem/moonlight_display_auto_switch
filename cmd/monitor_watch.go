@@ -22,9 +22,10 @@ func main() {
 	fakeDisplayIsActive := false
 	sunshineIsStreaming := false
 
-	mainDisplayIds := getMainDisplayIds()
-
 	for {
+		// Always get main display ids, because they can change for example with Remote Desktop
+		mainDisplayIds := getMainDisplayIds()
+
 		mainDisplayIsActive = isMainDisplayActive(mainDisplayIds)
 		fakeDisplayIsActive = isFakeDisplayActive()
 		sunshineIsStreaming = isSunshineStreaming()
