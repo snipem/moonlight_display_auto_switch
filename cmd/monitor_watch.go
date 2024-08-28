@@ -14,7 +14,7 @@ import (
 )
 
 const fakeDisplayId = "LNX0000"
-const version = "v1.1.1"
+const version = "v1.2"
 
 func main() {
 	log.Println("monitor_watch", version, "started")
