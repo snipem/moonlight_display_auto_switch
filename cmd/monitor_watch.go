@@ -14,8 +14,10 @@ import (
 )
 
 const fakeDisplayId = "LNX0000"
+const version = "v1.1.1"
 
 func main() {
+	log.Println("monitor_watch", version, "started")
 	mainDisplayIsActive := false
 	fakeDisplayIsActive := false
 	sunshineIsStreaming := false
@@ -35,7 +37,6 @@ func main() {
 			log.Println("Sunshine is streaming and main display is active. Deactivate Main Display, activate fake display.")
 			disableDisplay(mainDisplayIds)
 			enableDisplay([]string{fakeDisplayId})
-
 		}
 
 		if !sunshineIsStreaming && (fakeDisplayIsActive || !mainDisplayIsActive) {
@@ -53,7 +54,7 @@ func getMainDisplayIds() []string {
 	response := getMultiMonitorDeviceResponse()
 	for i, line := range response {
 		if i != 0 {
-			displayId := line[15]
+			displayId := line[multiMonitorResponseDisplayNameField]
 			if displayId != fakeDisplayId {
 				mainDisplayIds = append(mainDisplayIds, displayId)
 			}
@@ -155,13 +156,16 @@ func changeDisplay(command string, displays []string) error {
 	return nil
 }
 
+// value 3 is active state
+// value 15 is name
+const multiMonitorResponseActiveStateField = 3
+const multiMonitorResponseDisplayNameField = 15
+
 func isDisplayActive(displayName string) bool {
 	response := getMultiMonitorDeviceResponse()
 	for i, record := range response {
 		if i > 0 {
-			// value 3 is active state
-			// value 12 is name
-			if record[3] == "Yes" && record[15] == displayName {
+			if record[multiMonitorResponseActiveStateField] == "Yes" && record[multiMonitorResponseDisplayNameField] == displayName {
 				return true
 			}
 		}
