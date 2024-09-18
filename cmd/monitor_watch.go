@@ -9,12 +9,13 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
 
 const fakeDisplayId = "LNX0000"
-const version = "v1.2"
+const version = "v1.3"
 
 func main() {
 	log.Println("monitor_watch", version, "started")
@@ -38,6 +39,13 @@ func main() {
 			log.Println("Sunshine is streaming and main display is active. Deactivate Main Display, activate fake display.")
 			disableDisplay(mainDisplayIds)
 			enableDisplay([]string{fakeDisplayId})
+			// since the fake display is activated now, we can safely switch the resolution to that of the client
+			resolution, framerate := getDesiredResolutionAndFramerate()
+			log.Printf("EXPERIMENTAL: Desired Resolution: %s, Framerate: %s\n", resolution, framerate)
+			//err := changeResolutionAndFramerate(resolution, framerate)
+			//if err != nil {
+			//	log.Fatal(err)
+			//}
 		}
 
 		if !sunshineIsStreaming && (fakeDisplayIsActive || !mainDisplayIsActive) {
@@ -48,6 +56,24 @@ func main() {
 
 		time.Sleep(10 * time.Second)
 	}
+}
+
+func changeResolutionAndFramerate(resolution string, framerate string) error {
+	// C:\Users\mail\bin\multimonitortool-x64\MultiMonitorTool.exe /SetMonitors "Name=LNX0000 Width=%SUNSHINE_CLIENT_WIDTH% Height=%SUNSHINE_CLIENT_HEIGHT% DisplayFrequency=%SUNSHINE_CLIENT_FPS%"
+
+	width, height := resolutionToWidthAndHeight(resolution)
+
+	cmd := exec.Command("MultiMonitorTool.exe", "/SetMonitors", fmt.Sprintf("Name=%s Width=%s Height=%s DisplayFrequency=%s", fakeDisplayId, width, height, framerate))
+	// Run the command
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to execute command: %v", err)
+	}
+	return nil
+}
+
+func resolutionToWidthAndHeight(resolution string) (string, string) {
+	val := strings.Split(resolution, "x")
+	return val[0], val[1]
 }
 
 func getMainDisplayIds() []string {
@@ -89,8 +115,10 @@ func readLogFile(path string) (string, error) {
 	return content, nil
 }
 
+var sunshineLogFile = "${ProgramFiles}\\Sunshine\\config\\sunshine.log"
+
 func isSunshineStreaming() bool {
-	logfile, err := readLogFile("${ProgramFiles}\\Sunshine\\config\\sunshine.log")
+	logfile, err := readLogFile(sunshineLogFile)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -109,6 +137,34 @@ func isSunshineStreaming() bool {
 	}
 
 	return isConnected
+}
+
+func getDesiredResolutionAndFramerate() (string, string) {
+	logfile, err := readLogFile(sunshineLogFile)
+	if err != nil {
+		log.Fatal(err)
+	}
+	resolution := ""
+	framerate := ""
+	for _, logline := range strings.Split(logfile, "\n") {
+		// TODO maybe check that these lines are successive
+		if strings.Contains(logline, "Desktop resolution [") {
+			r, err := regexp.Compile(`[0-9]+x[0-9]+`)
+			if err != nil {
+				log.Fatal(err)
+			}
+			resolution = r.FindString(logline)
+		}
+		if strings.Contains(logline, "Requested frame rate [") {
+			r, err := regexp.Compile(`([0-9]+)fps`)
+			if err != nil {
+				log.Fatal(err)
+			}
+			// get first group
+			framerate = r.FindStringSubmatch(logline)[1]
+		}
+	}
+	return resolution, framerate
 }
 
 func isFakeDisplayActive() bool {
@@ -143,6 +199,10 @@ func enableDisplay(monitor []string) {
 	}
 }
 
+// changeDisplay executes MultiMonitorTool with the given command and
+// display ID(s), and returns an error if any of the commands fail.
+//
+// The command should be one of "/enable" or "/disable".
 func changeDisplay(command string, displays []string) error {
 
 	for _, display := range displays {
@@ -162,6 +222,10 @@ func changeDisplay(command string, displays []string) error {
 const multiMonitorResponseActiveStateField = 3
 const multiMonitorResponseDisplayNameField = 15
 
+// isDisplayActive checks if a display is currently active.
+//
+// displayName is the name of the display as it is known by the MultiMonitorTool.
+// The function returns true if the display is active and false otherwise.
 func isDisplayActive(displayName string) bool {
 	response := getMultiMonitorDeviceResponse()
 	for i, record := range response {
