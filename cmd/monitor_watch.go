@@ -31,9 +31,10 @@ func main() {
 		fakeDisplayIsActive = isFakeDisplayActive()
 		sunshineIsStreaming = isSunshineStreaming()
 
-		log.Printf("Fake display %s is active: %v\n", fakeDisplayId, fakeDisplayIsActive)
-		log.Printf("Main displays %s are active: %v\n", strings.Join(mainDisplayIds, ","), mainDisplayIsActive)
-		log.Println("Sunshine is streaming according to log: ", sunshineIsStreaming)
+		logline := fmt.Sprintf("Fake display %s is %s. ", fakeDisplayId, formatDeviceState(fakeDisplayIsActive))
+		logline += fmt.Sprintf("Main displays %s are %s. ", strings.Join(mainDisplayIds, ","), formatDeviceState(mainDisplayIsActive))
+		logline += fmt.Sprintf("Sunshine is %s\n", formatSunshineState(sunshineIsStreaming))
+		log.Printf(logline)
 
 		if sunshineIsStreaming && (!fakeDisplayIsActive || mainDisplayIsActive) {
 			log.Println("Sunshine is streaming and main display is active. Deactivate Main Display, activate fake display.")
@@ -41,7 +42,7 @@ func main() {
 			enableDisplay([]string{fakeDisplayId})
 			// since the fake display is activated now, we can safely switch the resolution to that of the client
 			resolution, framerate := getDesiredResolutionAndFramerate()
-			log.Printf("EXPERIMENTAL: Desired Resolution: %s, Framerate: %s\n", resolution, framerate)
+			log.Printf("Changing desired Resolution: %s, Framerate: %s\n", resolution, framerate)
 			err := changeResolutionAndFramerate(resolution, framerate)
 			if err != nil {
 				log.Fatal(err)
@@ -54,9 +55,22 @@ func main() {
 			enableDisplay(mainDisplayIds)
 		}
 
-		log.Printf("...")
 		time.Sleep(10 * time.Second)
 	}
+}
+
+func formatSunshineState(streaming bool) string {
+	if streaming {
+		return "streaming"
+	}
+	return "not streaming"
+}
+
+func formatDeviceState(active bool) string {
+	if active {
+		return "active"
+	}
+	return "inactive"
 }
 
 func changeResolutionAndFramerate(resolution string, framerate string) error {
