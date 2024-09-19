@@ -42,10 +42,10 @@ func main() {
 			// since the fake display is activated now, we can safely switch the resolution to that of the client
 			resolution, framerate := getDesiredResolutionAndFramerate()
 			log.Printf("EXPERIMENTAL: Desired Resolution: %s, Framerate: %s\n", resolution, framerate)
-			//err := changeResolutionAndFramerate(resolution, framerate)
-			//if err != nil {
-			//	log.Fatal(err)
-			//}
+			err := changeResolutionAndFramerate(resolution, framerate)
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 
 		if !sunshineIsStreaming && (fakeDisplayIsActive || !mainDisplayIsActive) {
@@ -54,6 +54,7 @@ func main() {
 			enableDisplay(mainDisplayIds)
 		}
 
+		log.Printf("...")
 		time.Sleep(10 * time.Second)
 	}
 }
