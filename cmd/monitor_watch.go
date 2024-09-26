@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -25,10 +26,12 @@ func main() {
 
 	for {
 		// Always get main display ids, because they can change for example with Remote Desktop
-		mainDisplayIds := getMainDisplayIds()
 
-		mainDisplayIsActive = isMainDisplayActive(mainDisplayIds)
-		fakeDisplayIsActive = isFakeDisplayActive()
+		response := getMultiMonitorDeviceResponse()
+		mainDisplayIds := response.getMainDisplayIds()
+
+		mainDisplayIsActive = response.IsMainDisplayActive(mainDisplayIds)
+		fakeDisplayIsActive = response.IsFakeDisplayActive()
 		sunshineIsStreaming = isSunshineStreaming()
 
 		logline := fmt.Sprintf("Fake display %s is %s. ", fakeDisplayId, formatDeviceState(fakeDisplayIsActive))
@@ -78,7 +81,7 @@ func changeResolutionAndFramerate(resolution string, framerate string) error {
 
 	width, height := resolutionToWidthAndHeight(resolution)
 
-	cmd := exec.Command("MultiMonitorTool.exe", "/SetMonitors", fmt.Sprintf("Name=%s Width=%s Height=%s DisplayFrequency=%s", fakeDisplayId, width, height, framerate))
+	cmd := exec.Command("MultiMonitorTool.exe", "/SetMonitors", fmt.Sprintf("Name=%s Width=%d Height=%d DisplayFrequency=%s", fakeDisplayId, width, height, framerate))
 	// Run the command
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("failed to execute command: %v", err)
@@ -86,20 +89,29 @@ func changeResolutionAndFramerate(resolution string, framerate string) error {
 	return nil
 }
 
-func resolutionToWidthAndHeight(resolution string) (string, string) {
-	val := strings.Split(resolution, "x")
-	return val[0], val[1]
+func resolutionToWidthAndHeight(resolution string) (int, int) {
+	// Define the regular expression to match numbers
+	re := regexp.MustCompile(`(\d+)\D+(\d+)`)
+
+	// Find the first match in the string
+	matches := re.FindStringSubmatch(resolution)
+
+	// Convert the captured values from string to int
+	if len(matches) == 3 {
+		x, _ := strconv.Atoi(matches[1])
+		y, _ := strconv.Atoi(matches[2])
+		return x, y
+	}
+
+	// Return zeros if the pattern is not matched
+	return -1, -1
 }
 
-func getMainDisplayIds() []string {
+func (response MultiMonitorDeviceResponse) getMainDisplayIds() []string {
 	mainDisplayIds := []string{}
-	response := getMultiMonitorDeviceResponse()
-	for i, line := range response {
-		if i != 0 {
-			displayId := line[multiMonitorResponseDisplayNameField]
-			if displayId != fakeDisplayId {
-				mainDisplayIds = append(mainDisplayIds, displayId)
-			}
+	for _, m := range response.MonitorInfo {
+		if m.ShortMonitorID != fakeDisplayId {
+			mainDisplayIds = append(mainDisplayIds, m.ShortMonitorID)
 		}
 	}
 	return mainDisplayIds
@@ -182,15 +194,14 @@ func getDesiredResolutionAndFramerate() (string, string) {
 	return resolution, framerate
 }
 
-func isFakeDisplayActive() bool {
-	displayName := fakeDisplayId
-	return isDisplayActive(displayName)
+func (response MultiMonitorDeviceResponse) IsFakeDisplayActive() bool {
+	return response.isDisplayActive(fakeDisplayId)
 }
 
-func isMainDisplayActive(mainDisplayIds []string) bool {
+func (response MultiMonitorDeviceResponse) IsMainDisplayActive(mainDisplayIds []string) bool {
 	returnValue := false
 	for _, id := range mainDisplayIds {
-		if !isDisplayActive(id) {
+		if !response.isDisplayActive(id) {
 			// immediately return false if one display is not active
 			return false
 		}
@@ -232,20 +243,18 @@ func changeDisplay(command string, displays []string) error {
 	return nil
 }
 
-// value 3 is active state
-// value 15 is name
-const multiMonitorResponseActiveStateField = 3
-const multiMonitorResponseDisplayNameField = 15
+type MultiMonitorDeviceResponse struct {
+	MonitorInfo []MonitorInfo
+}
 
 // isDisplayActive checks if a display is currently active.
 //
 // displayName is the name of the display as it is known by the MultiMonitorTool.
 // The function returns true if the display is active and false otherwise.
-func isDisplayActive(displayName string) bool {
-	response := getMultiMonitorDeviceResponse()
-	for i, record := range response {
+func (response MultiMonitorDeviceResponse) isDisplayActive(displayName string) bool {
+	for i, m := range response.MonitorInfo {
 		if i > 0 {
-			if record[multiMonitorResponseActiveStateField] == "Yes" && record[multiMonitorResponseDisplayNameField] == displayName {
+			if m.Active == "Yes" && m.ShortMonitorID == displayName {
 				return true
 			}
 		}
@@ -253,7 +262,46 @@ func isDisplayActive(displayName string) bool {
 	return false
 }
 
-func getMultiMonitorDeviceResponse() [][]string {
+type MonitorInfo struct {
+	Resolution          string
+	LeftTop             string
+	RightBottom         string
+	Active              string
+	Disconnected        string
+	Primary             string
+	Colors              string
+	Frequency           string
+	Orientation         string
+	MaximumResolution   string
+	Name                string
+	Adapter             string
+	DeviceID            string
+	DeviceKey           string
+	MonitorID           string
+	ShortMonitorID      string
+	MonitorKey          string
+	MonitorString       string
+	MonitorName         string
+	MonitorSerialNumber string
+}
+
+func (m MonitorInfo) IsActive() bool {
+	return m.Active == "Yes"
+}
+
+func (m MonitorInfo) IsDisconnected() bool {
+	return m.Disconnected == "Yes"
+}
+
+func (m MonitorInfo) IsPrimary() bool {
+	return m.Primary == "Yes"
+}
+
+func (m MonitorInfo) GetCurrentResolution() (x int, y int) {
+	return resolutionToWidthAndHeight(m.Resolution)
+}
+
+func getMultiMonitorDeviceResponse() MultiMonitorDeviceResponse {
 	// Generate a random file name for outputting the multimonitor device response
 	tempFolder := os.TempDir()
 	tempFile := filepath.Join(tempFolder, fmt.Sprintf("multimonitortool_%d.csv", rand.Int()))
@@ -269,7 +317,45 @@ func getMultiMonitorDeviceResponse() [][]string {
 		log.Fatalf("Error removing temporary file: %s", err)
 	}
 
-	return response
+	monitorInfos := []MonitorInfo{}
+	for _, line := range response[1:] {
+		monitorInfo := ReadMonitorInfo(line)
+		monitorInfos = append(monitorInfos, monitorInfo)
+	}
+
+	return MultiMonitorDeviceResponse{MonitorInfo: monitorInfos}
+}
+
+func ReadMonitorInfo(data []string) MonitorInfo {
+	// Ensure the slice has the correct number of fields before proceeding
+	if len(data) < 20 {
+		fmt.Println("Error: Insufficient data to populate MonitorInfo struct")
+	}
+
+	monitorInfo := MonitorInfo{
+		Resolution:          data[0],
+		LeftTop:             data[1],
+		RightBottom:         data[2],
+		Active:              data[3],
+		Disconnected:        data[4],
+		Primary:             data[5],
+		Colors:              data[6],
+		Frequency:           data[7],
+		Orientation:         data[8],
+		MaximumResolution:   data[9],
+		Name:                data[10],
+		Adapter:             data[11],
+		DeviceID:            data[12],
+		DeviceKey:           data[13],
+		MonitorID:           data[14],
+		ShortMonitorID:      data[15],
+		MonitorKey:          data[16],
+		MonitorString:       data[17],
+		MonitorName:         data[18],
+		MonitorSerialNumber: data[19],
+	}
+
+	return monitorInfo
 }
 
 func runCommandAndParseCSV(executable, args, filename string) ([][]string, error) {
